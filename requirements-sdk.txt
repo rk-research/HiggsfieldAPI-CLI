@@ -1,0 +1,2 @@
+# Official Higgsfield Python SDK variant
+higgsfield-client>=0.2,<0.3
