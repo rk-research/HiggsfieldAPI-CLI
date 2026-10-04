@@ -19,7 +19,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
       - name: Syntax check
-        run: python -m py_compile HiggsfieldAPI-CLI-sdk.py
-      - name: Unit tests
-        run: python -m unittest -v
+        run: python -m py_compile HiggsfieldAPI-CLI-sdk.py HiggsfieldAPI-MCP.py
+      - name: Offline unit tests with coverage
+        run: python -m coverage run test_offline_suite.py
+      - name: Coverage reports
+        if: always()
+        run: |
+          python -m coverage report
+          python -m coverage xml
+          python -m coverage html
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: error

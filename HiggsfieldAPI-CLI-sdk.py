@@ -29,7 +29,7 @@ from urllib.request import Request, urlopen
 BASE_URL = "https://api.higgsfield.ai"
 # Update this value for each release. The leading ``v`` is part of the displayed
 # CLI version and matches the project's release tag convention.
-CLI_VERSION = "v0.1.0"
+CLI_VERSION = "v0.2.0"
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_DOTENV_PATH = SCRIPT_DIR / ".env"
 DEFAULT_HTTP_TIMEOUT = 90.0
@@ -155,6 +155,9 @@ def parse_env_file(path: Path) -> Dict[str, str]:
 def load_credentials(env: Optional[Mapping[str, str]] = None,
                      dotenv_path: Optional[Path] = None) -> Credentials:
     environment = dict(os.environ if env is None else env)
+    if dotenv_path is not None and not dotenv_path.is_file():
+        raise AppError(f"Explicit --env-file must point to an existing regular file: {dotenv_path}",
+                       kind="configuration", exit_code=EXIT_VALIDATION)
     dotenv_values = parse_env_file(dotenv_path or DEFAULT_DOTENV_PATH)
     key_id = environment.get("HF_API_KEY_ID") or dotenv_values.get("HF_API_KEY_ID")
     secret = environment.get("HF_API_KEY_SECRET") or dotenv_values.get("HF_API_KEY_SECRET")
@@ -711,7 +714,7 @@ def fetch_status(client: SDKClient, request_id: str, status_url: Optional[str] =
     if not request_id.strip():
         raise AppError("REQUEST_ID must not be empty.", kind="validation", exit_code=EXIT_VALIDATION)
     url = status_url or f"/requests/{request_id}/status"
-    payload, _ = client.json_request("GET", url, retry_get=True)
+    payload, _ = client.json_request("GET", url)
     if not isinstance(payload, dict):
         raise ApiError("Higgsfield returned an invalid request status.", kind="api")
     status = payload.get("status")
@@ -1104,8 +1107,8 @@ def run_cancel(args: argparse.Namespace) -> Dict[str, Any]:
     return {"ok": True, "request_id": args.request_id, "status": "canceled", "remaining_credits": None}
 
 
-def run_presets(args: argparse.Namespace) -> Dict[str, Any]:
-    client = make_client(args)
+def run_presets(args: argparse.Namespace, *, client: Optional[SDKClient] = None) -> Dict[str, Any]:
+    client = client if client is not None else make_client(args)
     if args.size < 1:
         raise AppError("--size must be positive.", kind="validation", exit_code=EXIT_VALIDATION)
     cursor = args.cursor
@@ -1121,7 +1124,7 @@ def run_presets(args: argparse.Namespace) -> Dict[str, Any]:
         query = {"size": args.size}
         if cursor:
             query["cursor"] = cursor
-        payload, _ = client.json_request("GET", "/marketing-studio/image/presets?" + urlencode(query), retry_get=True)
+        payload, _ = client.json_request("GET", "/marketing-studio/image/presets?" + urlencode(query))
         if not isinstance(payload, dict):
             raise ApiError("Higgsfield returned an invalid preset response.", kind="api")
         if isinstance(payload.get("total"), int):
@@ -1341,8 +1344,7 @@ class SDKClient:
             raise converted from exc
 
     def json_request(self, method: str, path_or_url: str,
-                     payload: Optional[Mapping[str, Any]] = None,
-                     *, retry_get: bool = False) -> Tuple[Any, Any]:
+                     payload: Optional[Mapping[str, Any]] = None) -> Tuple[Any, Any]:
         method = method.upper()
         path = urlparse(path_or_url).path or path_or_url
         try:
@@ -1386,8 +1388,7 @@ class SDKClient:
         raise ApiError(f"Unsupported SDK operation: {method} {path}.", kind="api")
 
     def request(self, method: str, path_or_url: str, *, body: Optional[bytes] = None,
-                headers: Optional[Mapping[str, str]] = None, auth: bool = True,
-                retry_get: bool = False) -> Any:
+                headers: Optional[Mapping[str, str]] = None, auth: bool = True) -> Any:
         method = method.upper()
         if method == "POST":
             request_id = self._request_id(path_or_url)

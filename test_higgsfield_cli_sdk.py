@@ -99,8 +99,27 @@ class HiggsfieldSdkCliTests(unittest.TestCase):
         self.assertFalse(hasattr(self.cli, "HttpClient"))
 
     def test_empty_environment_mapping_does_not_fall_back_to_process_environment(self):
-        with self.assertRaisesRegex(self.cli.AppError, "Missing required Higgsfield credential"):
-            self.cli.load_credentials({}, Path("definitely-missing.env"))
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / "empty.env"
+            env_file.write_text("", encoding="utf-8")
+            with self.assertRaisesRegex(self.cli.AppError, "Missing required Higgsfield credential"):
+                self.cli.load_credentials({}, env_file)
+
+    def test_explicit_env_file_rejects_missing_paths_and_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for path in (Path(directory) / "missing.env", Path(directory)):
+                for environment in ({}, {"HF_API_KEY_ID": "id", "HF_API_KEY_SECRET": "secret"}):
+                    with self.subTest(path=path, environment=environment):
+                        with self.assertRaisesRegex(self.cli.AppError, "Explicit --env-file") as raised:
+                            self.cli.load_credentials(environment, path)
+                        self.assertEqual(raised.exception.kind, "configuration")
+                        self.assertEqual(raised.exception.exit_code, self.cli.EXIT_VALIDATION)
+
+    def test_missing_default_env_file_allows_environment_credentials(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(self.cli, "DEFAULT_DOTENV_PATH", Path(directory) / "missing.env"):
+            credentials = self.cli.load_credentials({"HF_API_KEY_ID": "id", "HF_API_KEY_SECRET": "secret"})
+        self.assertEqual(credentials, self.cli.Credentials("id", "secret"))
 
     def test_credentials_default_to_dotenv_next_to_the_script(self):
         with mock.patch.object(self.cli, "parse_env_file", return_value={

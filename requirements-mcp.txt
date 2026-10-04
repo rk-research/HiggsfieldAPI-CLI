@@ -1,0 +1,6 @@
+# Copyright (c) 2026 Richard Knuchel
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Official MCP Python SDK; FastMCP and Streamable HTTP are provided by this package.
+mcp>=1.28,<2
+-r requirements-sdk.txt

@@ -1,7 +1,12 @@
 .env
 __pycache__/
+.venv*/
 *.pyc
 *.pyo
 *.pyd
 output/
 outputs/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

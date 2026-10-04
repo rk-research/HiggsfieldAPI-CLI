@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Richard Knuchel
+# SPDX-License-Identifier: BSD-2-Clause
+
+[run]
+branch = True
+include =
+    HiggsfieldAPI-CLI-sdk.py
+    HiggsfieldAPI-MCP.py
+
+[report]
+show_missing = True
+precision = 2

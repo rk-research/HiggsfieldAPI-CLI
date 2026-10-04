@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Richard Knuchel
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Primary / Master Agent
+model = "gpt-6.1-sol"
+model_reasoning_effort = "low"
+
+# Safe local development defaults
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+# Subagents
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+
+# Default for routine delegated tasks.
+# Implementation tasks explicitly override this with HIGH.
+default_subagent_model = "gpt-6-luna"
+default_subagent_reasoning_effort = "low"

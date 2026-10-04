@@ -11,6 +11,8 @@ The exact workflow-specific options are listed in the command help and described
 
 `HiggsfieldAPI-CLI-sdk.py` is a single-file, Python 3.11+ command-line client for selected Higgsfield image and video APIs. It uses the official `higgsfield-client` package and is designed for terminals, shell scripts, and coding agents. The project is developed and tested with Python 3.14; the filename retains the historical `-sdk` suffix for compatibility.
 
+The repository also includes a standalone Python 3.12+ MCP server in `HiggsfieldAPI-MCP.py`. It reuses the CLI's validated request builders and SDK adapter, and supports Streamable HTTP for LiteLLM MCP Gateway or other MCP clients, plus stdio for local clients. See the [MCP quick start](#mcp-server) and the [complete MCP guide](docs/MCP.md).
+
 Copyright (c) 2026 Richard Knuchel. Licensed under the BSD 2-Clause License; see [LICENSE](LICENSE).
 
 ## Requirements and credentials
@@ -39,7 +41,7 @@ $env:HF_API_KEY_ID = "your-key-id"
 $env:HF_API_KEY_SECRET = "your-key-secret"
 ```
 
-Alternatively copy `.env.example` to `.env` (`cp .env.example .env`, or `Copy-Item .env.example .env`) and edit it. By default the CLI resolves this `.env` next to `HiggsfieldAPI-CLI-sdk.py`, independent of the current working directory; use `--env-file PATH` for an intentional alternate file. Process variables override the selected `.env`. `.env` contains secrets and is ignored by Git; `.env.example` has placeholders only. Do not put secrets in scripts unless you understand their exposure risk.
+Alternatively copy `.env.example` to `.env` (`cp .env.example .env`, or `Copy-Item .env.example .env`) and edit it. By default the CLI resolves this `.env` next to `HiggsfieldAPI-CLI-sdk.py`, independent of the current working directory; use `--env-file PATH` for an intentional alternate file. An explicit path must point to an existing regular file, even when process variables supply the credentials; otherwise credential loading fails with a configuration error (exit code `2`). The default `.env` is optional when process variables supply the credentials. Process variables override the selected `.env`. `.env` contains secrets and is ignored by Git; `.env.example` has placeholders only. Do not put secrets in scripts unless you understand their exposure risk.
 
 The CLI reads a deliberately small `.env` subset: blank lines, full-line `#` comments, and `NAME=value` assignments. Values may use matching single or double quotes. `export NAME=value` is not recognized and inline comments are not stripped; malformed lines abort the command with a validation error. See `parse_env_file()` in `HiggsfieldAPI-CLI-sdk.py` for the exact parser behavior.
 
@@ -114,8 +116,13 @@ Prompts can come from `--prompt`, `--prompt-file prompt.txt`, or `--prompt -` fo
 
 ```text
 HiggsfieldAPI-CLI-sdk.py              Supported single-file CLI
-test_higgsfield_cli_sdk.py            Deterministic mocked unit tests
+HiggsfieldAPI-MCP.py                  Standalone MCP server and LiteLLM callback
+test_higgsfield_cli_sdk.py            Deterministic mocked CLI tests
+test_higgsfield_mcp.py                Deterministic mocked MCP tests
+test_offline_suite.py                 Network-blocked combined acceptance runner
 requirements-sdk.txt                  Runtime dependency declaration
+requirements-mcp.txt                  MCP SDK dependency plus SDK requirements
+docs/MCP.md                           MCP installation, tools, security, and LiteLLM guide
 .codex/.claude/.cline/skills/         Synchronized asset-generation guidance
 AGENTS.md                             Repository and contribution conventions
 CLAUDE.md                             Claude Code repository pointer
@@ -280,3 +287,66 @@ If `py` is unavailable, use `python -m unittest -v` and `python -m py_compile Hi
 ## Verified API limitations
 
 The current official docs and model catalog agree on the endpoints and workflows above. The model-catalog code examples show optional Seedance 2.5 `bitrate_mode: "high"`, while the model input tables omit it; the CLI exposes it only as an explicit opt-in. No undocumented values are accepted. The public API does not document a remaining-credit endpoint.
+
+## MCP server
+
+The standalone `HiggsfieldAPI-MCP.py` server exposes the CLI's Higgsfield workflows as typed MCP tools. It uses Streamable HTTP at `http://127.0.0.1:8765/mcp` by default, supports stdio for local MCP clients, submits paid generations asynchronously, and reuses the CLI's request validation and SDK integration. It supports Marketing Studio, Grok Imagine 2, Soul 2, Ideogram 4, Seedance 2.0, Seedance 2.5, Cinema Studio 4.0, and Kling 3.0 Standard. Full workflow and tool details are in [docs/MCP.md](docs/MCP.md).
+
+Install on FreeBSD or Linux with Python 3.12+:
+
+```sh
+python3 -m pip install -r requirements-mcp.txt
+python3 HiggsfieldAPI-MCP.py --transport http --host 127.0.0.1 --port 8765
+```
+
+On Windows PowerShell:
+
+```powershell
+py -m pip install -r requirements-mcp.txt
+py .\HiggsfieldAPI-MCP.py --transport http --host 127.0.0.1 --port 8765
+```
+
+For stdio clients, use `python3 HiggsfieldAPI-MCP.py --transport stdio` (or `py .\HiggsfieldAPI-MCP.py --transport stdio` on Windows). Set `HF_API_KEY_ID` and `HF_API_KEY_SECRET` in the server process environment or use the same trusted `.env` behavior as the CLI. The HTTP bearer variable `HIGGSFIELD_MCP_BEARER_TOKEN` must be set in the process environment and is not loaded from `.env`. HTTP binds to loopback by default. Configure one or more `--input-dir` roots to permit local file uploads; with no roots, local input paths are rejected. Prompt files and media uploads use the 1 MiB default input size cap (`--max-input-file-size`, configurable up to 2 GiB). Downloads go to `outputs/mcp` by default and are reported as server-local paths.
+
+The server exposes generation workflows and matching estimate tools, plus status, wait, result retrieval, cancellation, presets, credits capability, and local media upload. Preset page size is limited to 1–1000. Every model and workflow is listed in [docs/MCP.md](docs/MCP.md).
+
+LiteLLM MCP Gateway quick setup uses two separate processes. The MCP server and `requirements-mcp.txt` run in the Python environment with MCP SDK 1.x. The LiteLLM gateway remains in its own supported environment and MCP SDK dependency set; do not install `requirements-mcp.txt` into that environment or downgrade its MCP package. Put both `HiggsfieldAPI-MCP.py` and `HiggsfieldAPI-CLI-sdk.py` next to the LiteLLM YAML config so the callback can load the same server source file:
+
+```yaml
+mcp_servers:
+  higgsfield:
+    url: "http://127.0.0.1:8765/mcp"
+    transport: "http"
+    auth_type: "bearer_token"
+    auth_value: os.environ/HIGGSFIELD_MCP_BEARER_TOKEN
+    description: "Higgsfield generation and request management"
+
+litellm_settings:
+  callbacks:
+    - HiggsfieldAPI-MCP.higgsfield_cost_tracker
+```
+
+Run the MCP server with optional accounting enabled:
+
+```sh
+python3 HiggsfieldAPI-MCP.py --transport http --litellm-costs
+```
+
+Then start LiteLLM from its existing environment:
+
+```sh
+litellm --config litellm.yaml --num_workers 1
+```
+
+Set `HF_MCP_LITELLM_SERVER=higgsfield` to match the LiteLLM server alias. Set `HF_MCP_ACCOUNTING_DB` to a durable SQLite path shared by LiteLLM gateway workers; the MCP service does not write the ledger. By default it is `outputs/mcp/higgsfield-mcp-accounting.sqlite3` beside the server source. Only the originating LiteLLM key hash can claim a generation's charge. If the submission callback has no key context, accounting is skipped. A crash after ledger claim but before the gateway persists spend can lose a booking; this is not exactly-once accounting. Scalar actual charges retain unknown currency and are never billed as USD; credits-only charges remain credits, with no USD conversion. Estimates are never booked as actual charges.
+
+Use this only on a trusted private network or behind an authenticated TLS reverse proxy. For public-facing deployments, apply network access control, authentication, and outbound firewall policy. The server rejects private IP literal media URLs, but DNS rebinding and provider-side URL fetches still require egress controls at the network boundary. Keep reverse proxy buffering disabled for Streamable HTTP and allow long-lived requests. FreeBSD dependency wheels may require a compiler toolchain; FreeBSD runtime verification has not been claimed.
+
+Final verification ran 65 tests (34 CLI and 31 MCP) with no skips on Windows using Python 3.14. Automated offline verification blocks outbound DNS and sockets:
+
+```sh
+python test_offline_suite.py
+python -m py_compile HiggsfieldAPI-CLI-sdk.py HiggsfieldAPI-MCP.py
+```
+
+MCP installation, tools, input/output controls, cost lifecycle, LiteLLM limitations, and a reverse-proxy configuration example are documented in [docs/MCP.md](docs/MCP.md).
