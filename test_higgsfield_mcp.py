@@ -642,6 +642,21 @@ class HiggsfieldMcpTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             client.download_file(safe, self.root / "outside.jpg")
 
+    def test_litellm_raw_key_matches_gateway_hash_and_existing_ledger(self):
+        # A fixed synthetic key/digest guards LiteLLM's SHA-256 identifier
+        # contract without calling a provider or requiring credentials.
+        gateway_hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        raw = {"litellm_params": {"metadata": {"user_api_key": "abc"}}}
+        hashed = {"litellm_params": {"metadata": {"user_api_key_hash": gateway_hash}}}
+        self.assertEqual(self.mcp._key_attribution(raw), gateway_hash)
+        self.assertEqual(self.mcp._key_attribution(hashed), gateway_hash)
+        with mock.patch.dict(os.environ, {"HF_MCP_ACCOUNTING_DB": str(self.root / "ledger.sqlite3")}):
+            self.mcp._ledger_record("higgsfield", "synthetic-request-key", gateway_hash)
+            self.assertTrue(self.mcp._ledger_claim(
+                "higgsfield", "synthetic-request-key", self.mcp._key_attribution(raw)))
+            self.assertFalse(self.mcp._ledger_claim(
+                "higgsfield", "synthetic-request-key", self.mcp._key_attribution(hashed)))
+
     async def test_litellm_cost_hook_books_originating_usd_charge_once_across_restarts(self):
         ledger = self.root / "ledger.sqlite3"
         with mock.patch.dict(os.environ, {"HF_MCP_ACCOUNTING_DB": str(ledger)}):

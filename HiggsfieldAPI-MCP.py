@@ -616,6 +616,11 @@ def _key_attribution(kwargs: dict[str, Any]) -> str | None:
     key = metadata.get("user_api_key") if isinstance(metadata, dict) else None
     if key:
         import hashlib
+        # Match LiteLLM's hash_token identifier for high-entropy gateway API
+        # keys. This is accounting attribution, not password storage or
+        # authentication; a salted KDF would break matching user_api_key_hash
+        # metadata and existing ledger entries. Never use passwords as keys.
+        # codeql[py/weak-sensitive-data-hashing]
         return hashlib.sha256(str(key).encode()).hexdigest()
     for alt in (kwargs.get("litellm_metadata"), kwargs.get("metadata")):
         if isinstance(alt, dict):
